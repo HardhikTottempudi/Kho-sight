@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "khosight"
+version = "0.1.0"
+description = "Computer-vision officiating assistant for Kho-Kho (KPL rulebook v3.0)"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+perception = ["ultralytics>=8.3", "opencv-python>=4.9"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+khosight = "khosight.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["khosight*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
