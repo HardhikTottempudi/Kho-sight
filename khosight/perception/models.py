@@ -20,6 +20,10 @@ KP_L_ANKLE, KP_R_ANKLE = 15, 16
 KP_CONF_MIN = 0.35
 
 
+# classes for the fine-tuned role detector (M1) — must match dataset data.yaml
+ROLE_CLASSES = ("chaser-seated", "chaser-active", "runner", "cone")
+
+
 @dataclass
 class PersonDetection:
     """One tracked person in one frame, in image pixels."""
@@ -28,6 +32,7 @@ class PersonDetection:
     bbox: tuple[float, float, float, float]  # x1, y1, x2, y2
     confidence: float
     keypoints: Optional[np.ndarray] = None   # (17, 3) x, y, conf
+    role_class: Optional[str] = None         # from the fine-tuned role detector
 
     def _kp(self, idx: int) -> Optional[tuple[float, float]]:
         if self.keypoints is None or self.keypoints[idx, 2] < KP_CONF_MIN:
@@ -66,22 +71,65 @@ class PersonDetection:
         )
 
 
+def bbox_iou(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter == 0.0:
+        return 0.0
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (area_a + area_b - inter)
+
+
+def assign_roles(
+    detections: list["PersonDetection"],
+    role_boxes: list[tuple[tuple[float, float, float, float], str]],
+    iou_min: float = 0.4,
+) -> None:
+    """Attach fine-tuned role-detector classes to tracked persons by best IoU."""
+    for det in detections:
+        best_iou, best_cls = iou_min, None
+        for bbox, cls in role_boxes:
+            if cls == "cone":
+                continue  # cones are static court furniture, not players
+            i = bbox_iou(det.bbox, bbox)
+            if i > best_iou:
+                best_iou, best_cls = i, cls
+        det.role_class = best_cls
+
+
 @dataclass
 class PerceptionModel:
     """YOLO-pose + tracker. `track_frame` returns per-frame PersonDetections
-    with persistent track ids."""
+    with persistent track ids.
+
+    `role_model_name` optionally adds a fine-tuned Kho-Kho role detector
+    (classes: ROLE_CLASSES, trained via notebooks/train_khosight_colab.ipynb).
+    Its classes ride along on each detection and replace jersey-colour
+    clustering for team assignment.
+    """
 
     model_name: str = "yolo11n-pose.pt"
+    role_model_name: Optional[str] = None  # e.g. "khosight_roles_best.pt" (M1)
     tracker: str = "bytetrack.yaml"  # or "botsort.yaml" (ReID, more robust to occlusion)
     conf: float = 0.25
+    role_conf: float = 0.35
     device: Optional[str] = None     # None = auto
     _model: Any = field(default=None, repr=False)
+    _role_model: Any = field(default=None, repr=False)
 
     def _ensure_model(self) -> None:
         if self._model is None:
             from ultralytics import YOLO  # lazy: keeps rules layer torch-free
 
             self._model = YOLO(self.model_name)
+        if self._role_model is None and self.role_model_name:
+            from ultralytics import YOLO
+
+            self._role_model = YOLO(self.role_model_name)
 
     def track_frame(self, frame_bgr: np.ndarray) -> list[PersonDetection]:
         self._ensure_model()
@@ -114,4 +162,15 @@ class PerceptionModel:
                     keypoints=kp,
                 )
             )
+        if self._role_model is not None:
+            r = self._role_model.predict(
+                frame_bgr, conf=self.role_conf, device=self.device, verbose=False
+            )[0]
+            role_boxes = [
+                (tuple(map(float, b)), r.names[int(k)])
+                for b, k in zip(
+                    r.boxes.xyxy.cpu().numpy(), r.boxes.cls.cpu().numpy()
+                )
+            ]
+            assign_roles(detections, role_boxes)
         return detections

@@ -48,11 +48,15 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--out", default="report", help="basename for .json/.md outputs")
     a.add_argument("--stride", type=int, default=2)
     a.add_argument("--model", default="yolo11m-pose.pt")
+    a.add_argument("--role-model", default=None,
+                   help="fine-tuned role detector weights (best.pt from Colab)")
 
     l = sub.add_parser("live", help="Phase 2: realtime referee alerts")
     l.add_argument("--calib", required=True)
     l.add_argument("--source", default="0", help="webcam index or RTSP/file URL")
     l.add_argument("--model", default="yolo11n-pose.pt")
+    l.add_argument("--role-model", default=None,
+                   help="fine-tuned role detector weights (best.pt from Colab)")
     l.add_argument("--stride", type=int, default=2)
     l.add_argument("--webhook", default=None)
     l.add_argument("--log", default=None, help="JSONL audit log path")
@@ -70,7 +74,12 @@ def main(argv: list[str] | None = None) -> int:
         from .perception.models import PerceptionModel
         from .pipeline.offline import AnalysisConfig, analyze_match
 
-        cfg = AnalysisConfig(stride=args.stride, model=PerceptionModel(model_name=args.model))
+        cfg = AnalysisConfig(
+            stride=args.stride,
+            model=PerceptionModel(
+                model_name=args.model, role_model_name=args.role_model
+            ),
+        )
         report = analyze_match(
             args.video, args.calib, args.team_a, args.team_b, args.half, cfg
         )
@@ -101,7 +110,9 @@ def main(argv: list[str] | None = None) -> int:
         ref = RealtimeReferee(
             calibration=CourtCalibration.load(args.calib),
             sinks=sinks,
-            model=PerceptionModel(model_name=args.model),
+            model=PerceptionModel(
+                model_name=args.model, role_model_name=args.role_model
+            ),
             stride=args.stride,
         )
         ref.run(source=source, display=args.display)

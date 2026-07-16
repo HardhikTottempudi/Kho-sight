@@ -66,18 +66,21 @@ docs/            research survey + rulebook→detector mapping
 ## Training on your match videos (next step — M1)
 
 The pipeline runs today on pretrained COCO models; accuracy on real matches
-comes from fine-tuning on your footage:
+comes from fine-tuning a role detector (`chaser-seated`, `chaser-active`,
+`runner`, `cone`) on your footage. **Full walkthrough:
+[docs/TRAINING.md](docs/TRAINING.md)** — no GPU laptop needed, training runs on
+free Google Colab via
+[notebooks/train_khosight_colab.ipynb](notebooks/train_khosight_colab.ipynb).
 
 ```bash
-# mine frames for annotation (CVAT / Label Studio / Roboflow)
-python scripts/prepare_dataset.py frames --videos matches/ --out dataset/frames
-# classes: person-chaser-seated, person-chaser-active, person-runner, cone
+# 1. extract frames (laptop)          2. pre-label automatically (optional)
+python scripts/prepare_dataset.py frames --videos matches/ --out frames/
+python scripts/auto_label.py --frames frames/ --out labels/
 
-# fine-tune the pose model
-python scripts/train_detector.py --data dataset/data.yaml --epochs 80
+# 3. correct labels in Roboflow  →  4. train in Colab (notebook above)
 
-# mine audio for the "kho" keyword spotter
-python scripts/prepare_dataset.py audio --videos matches/ --out dataset/audio
+# 5. use the trained weights
+python -m khosight analyze ... --role-model khosight_roles_best.pt
 ```
 
 ## Tests

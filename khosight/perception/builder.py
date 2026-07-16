@@ -151,7 +151,12 @@ class ObservationBuilder:
 
         self._resolve_chase_cluster(provisional)
         for det, cluster, obs in provisional:
-            obs.team = Team.CHASE if cluster == self.chase_cluster else Team.RUN
+            if det.role_class in ("chaser-seated", "chaser-active"):
+                obs.team = Team.CHASE  # fine-tuned role detector wins (M1)
+            elif det.role_class == "runner":
+                obs.team = Team.RUN
+            else:
+                obs.team = Team.CHASE if cluster == self.chase_cluster else Team.RUN
             if obs.team == Team.CHASE and obs.posture == Posture.SEATED:
                 obs.facing = self._infer_facing(obs)
             players.append(obs)
