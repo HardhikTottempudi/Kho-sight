@@ -108,9 +108,18 @@ def main() -> None:
         (out / f"{img.stem}.txt").write_text("\n".join(lines))
         if i % 100 == 0:
             print(f"{i}/{len(frames)} labelled")
+    # data.yaml so Roboflow maps class ids -> names correctly on import
+    if fine_tuned:
+        names = [model.names[k] for k in sorted(model.names)]
+    else:
+        names = ["chaser-seated", "chaser-active", "runner", "cone"]
+    (out.parent / "data.yaml").write_text(
+        f"train: images\nval: images\nnc: {len(names)}\nnames: {names}\n"
+    )
     print(f"Wrote {len(frames)} label files to {out}"
           + (f" (dropped {dropped} off-court detections)" if args.regions else "")
-          + ". Import into Roboflow/CVAT and correct classes/boxes.")
+          + f" and {out.parent / 'data.yaml'}."
+          " Import into Roboflow/CVAT and correct classes/boxes.")
 
 
 if __name__ == "__main__":
